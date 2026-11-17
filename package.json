@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
     "test:integration:db": "node scripts/db-integration-test.mjs",
     "db:check": "node --env-file=.env.local scripts/db-check.mjs",
