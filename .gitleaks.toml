@@ -1,0 +1,4 @@
+title = "COLLAB secret detection"
+
+[extend]
+useDefault = true

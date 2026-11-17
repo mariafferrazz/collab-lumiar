@@ -1,0 +1,23 @@
+services:
+  postgres-restore:
+    image: ${COLLAB_RESTORE_POSTGRES_IMAGE:-postgres:18-alpine}
+    environment:
+      POSTGRES_DB: collab_restore_validation
+      POSTGRES_USER: collab_restore_runner
+      POSTGRES_PASSWORD: ${COLLAB_RESTORE_DB_PASSWORD:?temporary restore password is required}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U collab_restore_runner -d collab_restore_validation",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql
+    volumes:
+      - type: bind
+        source: ${COLLAB_RESTORE_BACKUP_DIRECTORY:?external backup directory is required}
+        target: /backup
+        read_only: true

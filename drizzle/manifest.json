@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "migrations": [
+    {
+      "id": "0000_collab_catalog",
+      "file": "0000_collab_catalog.sql",
+      "sha256": "1ce1576bf47f998a8444487d9e4ea1541f1b8f247636b3f5676b901373b09527"
+    }
+  ]
+}

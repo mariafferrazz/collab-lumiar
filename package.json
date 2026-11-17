@@ -6,21 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
+    "test:integration:db": "node scripts/db-integration-test.mjs",
+    "db:check": "node --env-file=.env.local scripts/db-check.mjs",
+    "db:migrations:check": "node --env-file=.env.local scripts/db-migrations-check.mjs",
+    "db:migrations:plan": "node scripts/db-migration-plan.mjs",
+    "db:migrations:plan:development": "tsx --env-file=.env.local scripts/db-development-preflight.ts",
+    "db:migrate:test": "tsx scripts/db-migrate.ts",
+    "db:migrate:development": "tsx --env-file=.env.local scripts/db-migrate-development.ts"
   },
   "dependencies": {
+    "drizzle-orm": "0.45.4",
     "next": "16.4.6",
+    "postgres": "4.1.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@tailwindcss/turbopack": "4.3.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.6",
     "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
     "typescript": "^5"
   }
 }

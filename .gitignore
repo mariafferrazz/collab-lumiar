@@ -23,6 +23,48 @@
 # misc
 .DS_Store
 *.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.ppk
+id_rsa*
+id_ed25519*
+credentials.json
+credentials.*.json
+*-credentials.json
+service-account*.json
+.pgpass
+pgpass.conf
+.netrc
+
+# database backups and local data
+/backups/
+/dumps/
+*.bak
+*.backup
+*.dump
+*.dump.sql
+*.backup.sql
+*_dump.sql
+*.db
+*.sqlite
+*.sqlite3
+/.migration-evidence/
+*.migration-evidence.json
+/migration-evidence*.json
+
+# local sensitive tool configuration
+.railway/
+.supabase/
+.npmrc
+!.npmrc.example
+.npmrc.local
+
+# reports and logs that may contain sensitive values
+gitleaks-report.*
+*.log
 
 # debug
 npm-debug.log*
@@ -30,8 +72,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# environment files (only the empty contract is versioned)
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
