@@ -16,8 +16,9 @@ artistas e produtores de Lumiar, Nova Friburgo (RJ).
 ## Mensagem central
 
 A COLLAB demonstra trabalho full-stack em um contexto comercial real: identidade
-visual, experiência responsiva, arquitetura server-side, modelagem relacional,
-migrations seguras, testes com PostgreSQL descartável e proteção de credenciais.
+visual, experiência responsiva, autenticação, painel administrativo, catálogo
+persistido, precificação, modelagem relacional, migrations seguras, testes com
+PostgreSQL descartável e proteção de credenciais.
 
 O material sempre diferencia três estados:
 
@@ -28,29 +29,29 @@ O material sempre diferencia três estados:
 
 ## Arquitetura resumida
 
-| Camada               | Estado                 | Responsabilidade                                   |
-| -------------------- | ---------------------- | -------------------------------------------------- |
-| Next.js/React        | Implementado           | páginas públicas, componentes e renderização       |
-| Serviços server-only | Implementado/preparado | ambiente, banco e Instagram                        |
-| PostgreSQL/Drizzle   | Preparado e testado    | schema e migration ainda não aplicados remotamente |
-| Docker               | Implementado           | validação destrutiva em banco descartável          |
-| Railway development  | Preparado              | PostgreSQL online, sem migration aplicada          |
-| Better Auth          | Planejado              | autenticação e sessões                             |
-| Mercado Pago         | Planejado              | pagamentos e webhooks                              |
-| Melhor Envio         | Planejado              | cotação e contratação de frete                     |
+| Camada               | Estado                  | Responsabilidade                                       |
+| -------------------- | ----------------------- | ------------------------------------------------------ |
+| Next.js/React        | Implementado            | vitrine, painel, formulários e renderização            |
+| Serviços server-only | Implementado/preparado  | banco, autenticação, catálogo e integrações privadas   |
+| PostgreSQL/Drizzle   | Implementado            | migrations 0000–0002, ledger e constraints             |
+| Docker               | Implementado            | banco local persistente e testes descartáveis          |
+| Railway development  | Implementado controlado | migrations aplicadas; aplicação local não usa Railway  |
+| Better Auth          | Implementado localmente | sessões, papéis, verificação e recuperação             |
+| Resend/Instagram     | Preparado               | adaptadores prontos; credenciais/autorização pendentes |
+| Mercado Pago/Frete   | Pendente                | pagamentos, webhooks, cotação e contratação            |
 
-## Checklist de publicação do portfólio
+## Checklist desta atualização do portfólio
 
 - [x] README distingue funcionalidades atuais e futuras
 - [x] Gitleaks configurado no pre-commit e na CI
 - [x] `.env.example` sem valores reais
 - [x] screenshots capturadas localmente
 - [x] documentação para LinkedIn preparada
-- [ ] autorização para publicar marca, logotipo e imagens confirmada
-- [ ] conjunto staged revisado e escaneado
-- [ ] relatório final aprovado pela responsável
-- [ ] repositório remoto criado e primeiro push autorizado
-- [ ] URL pública adicionada aos textos do LinkedIn
+- [x] autorização anterior para publicar marca, logotipo e imagens confirmada
+- [x] repositório público existente e URL aplicada aos textos
+- [ ] conjunto desta atualização revisado, staged e escaneado
+- [ ] novas capturas administrativas aprovadas pela proprietária
+- [ ] commits e push desta atualização autorizados explicitamente
 
 ## Direitos
 

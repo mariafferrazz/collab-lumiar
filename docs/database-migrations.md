@@ -1,16 +1,48 @@
 # Migrations e PostgreSQL isolado
 
 Este documento descreve o runner próprio da COLLAB, os testes destrutivos em
-PostgreSQL descartável e o procedimento futuro de backup. Nenhum comando desta
-etapa acessou a Railway.
+PostgreSQL descartável e o procedimento obrigatório de backup.
 
-## Estado da Etapa 2.1.3
+## Estado atual
 
-Em 17 de novembro de 2026, consultas exclusivamente de leitura confirmaram que
-o serviço PostgreSQL do projeto `collab`, ambiente `development`, está online em
-PostgreSQL 18.6 (`server_version_num=180006`). O ledger
-`collab_schema_migrations` ainda não existe. O ambiente `production` não foi
-consultado e nenhuma migration, DDL ou DML foi executada na Railway.
+Em 19 de novembro de 2026, as migrations `0000_collab_catalog`,
+`0001_collab_auth` e `0002_collab_financial_pricing` estavam aplicadas no
+serviço PostgreSQL 18.6 do projeto `collab`, exclusivamente em `development`,
+depois dos respectivos backups, testes de restauração, preflights e
+autorizações explícitas. O ledger contém os três registros. Production não foi
+consultado.
+
+A migration `0002_collab_financial_pricing` cria o modelo de precificação e
+auditoria financeira. Na revisão da Etapa 2.3.1, ela passou a exigir no próprio
+banco a decomposição fixa de 40%/50%/50%, vigência e modalidade coerentes e
+preço específico de variação financeiramente validado. O SHA-256 aplicado é
+`09a312fb31f814b342849b3b9187f584482a8cb43b81d536c28376d2408922af`.
+
+Depois da rotação preventiva da credencial de `development`, um novo backup
+custom foi restaurado em PostgreSQL 18 descartável e teve inventário, ledger e
+contagens comparados. A `0002` foi ensaiada em um clone dessa restauração e
+aplicada uma única vez pelo runner transacional. Backup, inventários e evidência
+continuam fora do projeto e do OneDrive; nomes, caminhos e hashes operacionais
+não são versionados. Qualquer migration futura exige novo backup, nova evidência
+e nova autorização explícita.
+
+## Revisão financeira anterior à aplicação
+
+A `0002` mantém cinco tabelas, cinco enums, índices, FKs, checks, seis funções e
+quatorze triggers financeiros. O ensaio isolado confirmou inserção legítima de
+auditoria, rejeição de `UPDATE`/`DELETE` append-only e rollback integral de DDL.
+As migrations `0000` e `0001` não foram modificadas.
+
+Cada cenário de produto ainda referencia uma taxa de pagamento e um tributo.
+Isso é uma limitação operacional conhecida, não uma configuração fiscal
+definitiva. As regras individuais já registram base, escopo, vigência e fonte;
+uma migration futura deverá adicionar associação N:N e snapshots de pedido para
+múltiplos tributos, valores previstos/efetivos e integração com motor fiscal ou
+contábil. Nenhum regime, CNAE, alíquota ou natureza da operação é presumido.
+
+`scripts/sql/catalog-inventory.sql` executa somente consultas e produz um
+inventário canônico de objetos, ledger e contagens. O mesmo arquivo deve ser
+usado na origem e na restauração para que seus SHA-256 sejam comparáveis.
 
 Como a baseline anterior era PostgreSQL 17, o Compose descartável agora usa
 `postgres:18-alpine` por padrão. `COLLAB_TEST_POSTGRES_IMAGE` continua podendo
@@ -138,11 +170,11 @@ O ledger não é o histórico interno do Drizzle Kit. Não use `drizzle-kit push
 
 No `npm test` comum, a suíte destrutiva aparece como `skipped` porque não recebe
 a URL temporária. `npm run test:integration:db` provisiona o banco e executa os
-11 cenários; todos foram aprovados nesta etapa.
+15 cenários; todos foram aprovados nesta etapa.
 
-## Backup lógico de development — preparado, não executado
+## Backup lógico de development — procedimento controlado
 
-O backup remoto exige nova autorização. Use binários PostgreSQL 18, compatíveis
+Cada novo backup remoto exige autorização. Use binários PostgreSQL 18, compatíveis
 com o servidor 18.6, e mantenha todos os arquivos em um diretório local como
 `%LOCALAPPDATA%\COLLAB\migration-evidence`, fora do Git e fora do OneDrive.
 Não use um diretório filho do projeto. A senha deve ficar em `PGPASSFILE` com
@@ -184,7 +216,7 @@ arquivo real, tamanho, assinatura e SHA-256 antes de conectar. O `.gitignore`
 bloqueia extensões de dump como defesa adicional, mas não substitui o diretório
 externo.
 
-## Restauração descartável — preparada, não executada
+## Restauração descartável
 
 `compose.postgres-restore.yml` cria um PostgreSQL 18 novo em `tmpfs`, sem porta
 publicada, e monta o diretório de backup como somente leitura. Ele nunca deve
@@ -234,7 +266,7 @@ fingerprint SHA-256 canônico da instância, banco, usuário e versão. Em segui
 lê o ledger se ele existir e apresenta pendências. Não cria objetos. A
 simulação totalmente offline é `npm run db:migrations:plan`.
 
-`npm run db:migrate:development` existe para uma etapa futura autorizada, mas
+`npm run db:migrate:development` existe somente para etapas autorizadas e
 recusa a execução até todas as condições abaixo coincidirem:
 
 1. projeto `collab`, ambiente `development` e alvo `railway-development`;
@@ -252,18 +284,34 @@ recusa a execução até todas as condições abaixo coincidirem:
 
 O ambiente `production`, URLs remotas diretas, backup dentro do projeto ou do
 OneDrive, evidência vencida e autorização genérica são rejeitados antes da
-aplicação. Este comando não foi executado nesta etapa.
+aplicação. Depois da aplicação controlada da `0002`, o preflight registrou três
+migrations íntegras no ledger e nenhuma pendência.
 
-Após uma futura aplicação autorizada, confira o ledger e os objetos com o
-preflight somente leitura. Em falha antes do commit, o PostgreSQL reverte DDL e
-ledger. Se houver falha operacional depois do commit, interrompa novas escritas
-e restaure o backup validado em uma instância nova; não sobrescreva o banco
-existente sem uma decisão de incidente aprovada.
+Após cada aplicação autorizada, confira o ledger e os objetos com o preflight
+somente leitura. Em falha antes do commit, o PostgreSQL reverte DDL e ledger. Se
+houver falha operacional depois do commit, interrompa novas escritas e restaure
+o backup validado em uma instância nova; não sobrescreva o banco existente sem
+uma decisão de incidente aprovada.
 
 Referências oficiais: [pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html),
 [pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html) e
 [backup por dump SQL](https://www.postgresql.org/docs/18/backup-dump.html).
 
-Production permanece bloqueado. A estratégia UUID do Better Auth também
-permanece pendente: a Etapa 2.2 deverá gerar o schema oficial antes de adicionar
-qualquer FK a `customer_addresses.user_id`.
+Production permanece bloqueado. O schema UUID oficial do Better Auth 1.7.25 e a
+FK de `customer_addresses.user_id` estão versionados em `0001_collab_auth` e
+foram aplicados somente em development pelo runner controlado.
+
+O modelo financeiro, suas fórmulas e os limites operacionais estão documentados
+em [Modelo financeiro](financial-model.md).
+
+## Divergência exclusiva do PostgreSQL local
+
+O volume persistente de pré-visualização registrou uma versão anterior da
+`0002`, enquanto o manifesto atual contém a revisão financeira canônica. O
+guard recusou corretamente a inicialização. O backup e a restauração foram
+validados, e a recuperação autorizada criou um volume novo com as três
+migrations canônicas e transferiu os dados sem copiar o ledger antigo. O volume
+original permanece intacto para rollback. Consulte
+[Reconciliação do PostgreSQL local](local-database-reconciliation.md). Essa
+situação não altera o estado das migrations da Railway e não autoriza acesso a
+nenhum ambiente remoto.

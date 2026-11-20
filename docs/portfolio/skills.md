@@ -19,13 +19,15 @@
 | ----------------------- | ----------------------------------------------------------- |
 | React.js                | componentes reutilizáveis e composição das páginas públicas |
 | Git e GitHub            | histórico, workflows, Dependabot e preparação de publicação |
-| Segurança de aplicações | server-only, proteção de ambiente e Gitleaks                |
-| Integração de APIs      | camada preparada para a API oficial do Instagram            |
+| Segurança de aplicações | Better Auth, server-only, autorização e Gitleaks            |
+| Integração de APIs      | Resend e Instagram preparados sem expor tokens              |
 | Testes de software      | testes unitários e integração real com PostgreSQL           |
-| Drizzle ORM             | schema modular e relacionamentos tipados                    |
-| Arquitetura de software | separação por domínio, camadas e estados de entrega         |
+| Drizzle ORM             | schema modular, relações e migrations versionadas           |
+| Arquitetura de software | catálogo público, painel e serviços separados por domínio   |
+| DevSecOps               | CI, secret scanning, auditoria e guards de ambiente         |
 | Engenharia de prompts   | uso estruturado de IA com critérios e validações            |
 
 As competências devem ser associadas ao projeto somente enquanto refletirem o
-trabalho efetivamente realizado. Mercado Pago, Melhor Envio e Better Auth ainda
-não devem ser apresentados como integrações concluídas.
+trabalho efetivamente realizado. Better Auth está implementado no ambiente
+local isolado. Mercado Pago, Melhor Envio, Resend real e Instagram autorizado
+não devem ser apresentados como integrações operacionais.

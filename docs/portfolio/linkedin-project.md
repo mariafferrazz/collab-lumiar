@@ -2,48 +2,47 @@
 
 ## Título
 
-**COLLAB LUMIAR — Desenvolvimento Full-Stack de E-commerce**
+**COLLAB LUMIAR — E-commerce Full-Stack em Desenvolvimento**
 
 ## Descrição principal
 
-A COLLAB LUMIAR é um e-commerce real em desenvolvimento, criado para valorizar
-artistas e produtores da região de Lumiar, Nova Friburgo (RJ), por meio de uma
-vitrine digital colaborativa.
+A COLLAB LUMIAR é um e-commerce em desenvolvimento para artistas e produtores
+da região de Lumiar, Nova Friburgo (RJ). O projeto combina vitrine pública,
+autenticação, painel administrativo e uma arquitetura de dados preparada para a
+evolução segura da operação.
 
-Atuo no planejamento e desenvolvimento full-stack do projeto, incluindo
-arquitetura da aplicação, identidade visual, experiência responsiva, componentes
-reutilizáveis, modelagem PostgreSQL, migrations seguras, testes automatizados e
-preparação da infraestrutura. A base utiliza Next.js, React, TypeScript,
-Tailwind CSS, PostgreSQL, Drizzle ORM, Docker e Railway.
+Atuo na arquitetura e implementação full-stack: interface responsiva com
+Next.js/React, modelagem PostgreSQL com Drizzle ORM, migrations transacionais,
+autenticação com Better Auth, CRUD administrativo de catálogo, variações e
+estoque, precificação, auditoria e integração do catálogo persistido à vitrine.
 
-Entre os principais desafios técnicos estão a separação rigorosa entre
-configurações públicas e privadas, a proteção de credenciais, a modelagem de
-catálogo/estoque/logística, o controle transacional de migrations e a validação
-em PostgreSQL descartável com cenários de concorrência e rollback.
+A validação inclui testes unitários, integração real em PostgreSQL 18
+descartável, cenários de concorrência e rollback, npm audit, Gitleaks e GitHub
+Actions. O ambiente administrativo local é isolado de serviços remotos e possui
+guards que recusam destinos inesperados.
 
 Codex e outras ferramentas de IA apoiam implementação, testes, documentação e
-revisão, com validação humana das decisões de produto e arquitetura.
+revisão, com validação humana das decisões de produto, segurança e arquitetura.
 
-O projeto possui páginas públicas e catálogo demonstrativo, além de schema e
-migration validados. Persistência real, autenticação, carrinho, pagamentos,
-frete, administração e deploy público ainda estão em desenvolvimento.
+A aplicação não está em produção. Pagamentos, frete, e-mail transacional real,
+upload remoto de imagens e inventário definitivo permanecem pendentes.
 
 ## Versão resumida
 
-Desenvolvimento full-stack de um e-commerce colaborativo para artistas de
-Lumiar (RJ), com Next.js, TypeScript, PostgreSQL, Drizzle ORM e Docker. Atuação
-em arquitetura, interface responsiva, modelagem de dados, segurança de
-credenciais, migrations e testes de integração. Projeto em desenvolvimento,
-sem pagamentos ou operação em produção neste momento.
+Desenvolvimento de e-commerce full-stack com Next.js, TypeScript, PostgreSQL,
+Drizzle ORM, Better Auth e Docker. Implementação de vitrine, autenticação, painel
+administrativo, catálogo/estoque, precificação, migrations seguras, testes de
+integração e controles DevSecOps. Projeto em desenvolvimento, sem operação
+comercial ou pagamentos reais.
 
-## Versão técnica
+## Tecnologias e competências
 
-Aplicação Next.js 16/React 19 com TypeScript estrito e Tailwind CSS 4. Schema
-PostgreSQL 18 modelado com Drizzle ORM; migration SQL versionada por checksum,
-ledger próprio, advisory lock e transação. Testes locais com Node.js/TSX e 11
-cenários de integração em PostgreSQL descartável via Docker Compose. Segurança
-com módulos server-only, `.env` protegido, Gitleaks, pre-commit, GitHub Actions
-e npm audit. Better Auth, Mercado Pago e Melhor Envio permanecem planejados.
+- Next.js 16, React 19, TypeScript e Tailwind CSS 4;
+- PostgreSQL 18, Drizzle ORM e Postgres.js;
+- Better Auth, autorização por papel e sessões server-side;
+- Docker Compose e testes de integração;
+- Git, GitHub Actions, Gitleaks e npm audit;
+- arquitetura de software e desenvolvimento apoiado por IA.
 
 ## URL
 
@@ -51,11 +50,11 @@ GitHub: https://github.com/mariafferrazz/collab-lumiar
 
 ## Imagens sugeridas
 
-1. Homepage desktop com identidade COLLAB LUMIAR.
-2. Catálogo de produtos demonstrativos.
-3. Página de detalhes de produto.
-4. Página de artistas.
-5. Homepage em viewport mobile.
+1. Homepage demonstrativa atual.
+2. Catálogo público demonstrativo.
+3. Dashboard administrativo sem dados pessoais.
+4. Painel financeiro sem valores confidenciais.
 
-Use somente as capturas presentes em `docs/portfolio/screenshots/` depois de
-confirmar os direitos da marca e dos ativos visuais.
+As imagens administrativas devem ser revisadas pela proprietária antes da
+publicação e nunca podem mostrar credenciais, e-mail do `ADMIN`, tokens ou
+informações comerciais reais.

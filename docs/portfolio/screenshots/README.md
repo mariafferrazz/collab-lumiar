@@ -1,7 +1,9 @@
 # Screenshots do portfólio
 
-As imagens desta pasta são capturas reais da aplicação local, sem credenciais,
-dados pessoais ou painéis administrativos.
+As imagens desta pasta são capturas reais da interface pública local em modo
+demonstrativo, sem credenciais, dados pessoais ou painéis administrativos. Elas
+foram produzidas antes da integração do catálogo persistido e permanecem úteis
+para mostrar a identidade visual, mas não representam todas as telas atuais.
 
 | Arquivo                | Conteúdo                           |
 | ---------------------- | ---------------------------------- |
@@ -13,7 +15,8 @@ dados pessoais ou painéis administrativos.
 
 ## Atualização manual
 
-1. Execute `npm run dev`.
+1. Execute `npm run local:start` para o ambiente persistido ou prepare o modo
+   `demo` sem usar credenciais reais.
 2. Acesse a rota desejada em `http://localhost:3000`.
 3. Use um viewport desktop de aproximadamente `1440 × 1000` ou mobile abaixo do
    breakpoint de `640 px` (a captura atual usa `500 × 932`).
@@ -24,3 +27,11 @@ dados pessoais ou painéis administrativos.
 
 Antes da publicação, confirme autorização para exibir marca, logotipo,
 fotografias e conteúdo institucional.
+
+## Capturas pendentes de revisão
+
+Para a atualização seguinte, priorize de duas a quatro imagens: home atual,
+listagem pública, dashboard e painel financeiro. As duas últimas exigem login
+manual da proprietária; não extraia cookie, token ou credencial para automatizar
+a captura. O painel deve estar vazio ou conter somente registros claramente
+identificados como desenvolvimento.

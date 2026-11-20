@@ -30,11 +30,16 @@ portfolio
 Os topics descrevem tecnologias e escopo já presentes. Eles não afirmam que
 pagamentos, autenticação ou frete estejam concluídos.
 
-## Mensagem do primeiro commit público
+## Histórico público
 
 ```text
 feat: preparar COLLAB Lumiar para portfólio público
 ```
+
+A atualização seguinte reúne autenticação, dashboard administrativo, módulo
+financeiro, catálogo persistido, performance e reconciliação segura do banco
+local. Ela deve ser publicada somente depois da revisão final e de nova
+autorização explícita para commits e push.
 
 ## Checklist da publicação
 
@@ -47,15 +52,14 @@ feat: preparar COLLAB Lumiar para portfólio público
 - [x] Revisar README, direitos de uso e textos do LinkedIn
 - [x] Obter aprovação explícita para criar commit e repositório remoto
 
-## Sequência executada após autorização
+## Sequência obrigatória para atualizações
 
 1. Adicionar cuidadosamente somente os arquivos revisados ao staging.
 2. Executar novamente Gitleaks no staging.
 3. Criar o commit com a mensagem aprovada.
-4. Criar o repositório `collab-lumiar` sem sobrescrever outro projeto.
-5. Configurar `origin` e fazer o primeiro push da branch `main`.
-6. Confirmar a URL pública e substituir os marcadores nos textos do LinkedIn.
-7. Fixar o projeto no perfil GitHub, se desejado.
+4. Confirmar que `origin/main` não avançou de forma incompatível.
+5. Fazer push normal para o repositório existente, nunca `--force`.
+6. Confirmar o commit remoto, README, workflows e ausência de deploy.
 
 ## Controles do GitHub após a publicação
 
@@ -73,4 +77,5 @@ feat: preparar COLLAB Lumiar para portfólio público
 - remote `origin` configurado para o repositório correto;
 - branch principal local `main`;
 - README e materiais visuais incluídos no conjunto auditado;
-- nenhum deploy, migration, acesso à produção ou publicação no LinkedIn.
+- nenhum workflow executa deploy ou migration;
+- a atualização técnica atual ainda aguarda autorização de commit e push.
