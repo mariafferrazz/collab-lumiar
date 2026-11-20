@@ -1,0 +1,30 @@
+name: collab-local-admin
+
+services:
+  postgres-local-admin:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: collab_local_admin
+      POSTGRES_USER: collab_local_admin
+      POSTGRES_PASSWORD: ${COLLAB_LOCAL_DB_PASSWORD:?local password is required}
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U collab_local_admin -d collab_local_admin"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - collab-local-admin-data:/var/lib/postgresql
+      - ./scripts/local-admin/docker-init:/docker-entrypoint-initdb.d:ro
+    labels:
+      com.collab.environment: local-development
+      com.collab.purpose: admin-preview
+
+volumes:
+  collab-local-admin-data:
+    name: ${COLLAB_LOCAL_DB_VOLUME_NAME:-collab-local-admin-reconciled-data}
+    labels:
+      com.collab.environment: local-development
+      com.collab.purpose: admin-preview

@@ -1,15 +1,22 @@
-# Migrations do catálogo COLLAB
+# Migrations da COLLAB
 
-Esta pasta contém SQL versionado para revisão antes de qualquer alteração no
-PostgreSQL. Nenhum arquivo daqui foi executado nesta etapa.
+Esta pasta contém SQL versionado e imutável para revisão antes de alterações no
+PostgreSQL. As migrations `0000_collab_catalog` e `0001_collab_auth` já foram
+aplicadas exclusivamente em development pelo runner controlado.
 
-## Estado da Etapa 2.1.1
+## Estado atual
 
 - `0000_collab_catalog.sql` define as oito tabelas do domínio, índices,
   constraints e triggers PL/pgSQL revisados;
+- `0001_collab_auth.sql` prepara as quatro tabelas oficiais do Better Auth,
+  índices e a FK UUID de endereços;
+- `0002_collab_financial_pricing.sql` prepara políticas, encargos, custos,
+  cenários e auditoria financeira; foi revisada antes da aplicação, validada em
+  PostgreSQL 18 descartável e em clone de backup restaurado, e ainda não foi
+  aplicada remotamente;
 - `manifest.json` fixa ID, ordem e SHA-256 do arquivo SQL;
 - não existem dados pessoais, seeds, URLs ou credenciais;
-- não existe journal/snapshot do Drizzle Kit nem migration registrada no banco;
+- não existe journal/snapshot do Drizzle Kit; o runner próprio mantém o ledger;
 - `npm run db:migrations:check` valida ambiente local e checksum sem abrir
   conexão.
 - o runner próprio usa o ledger `collab_schema_migrations`, separado do Drizzle
@@ -34,6 +41,6 @@ Não misture este SQL manual revisado com `drizzle-kit push` ou geração autom�
    crie dois históricos concorrentes.
 
 O procedimento completo de backup, teste, aplicação e rollback futuro está no
-`README.md` e em `docs/database-migrations.md`. A suíte real foi aprovada em
-PostgreSQL 17.12 isolado, com 11 cenários de migration, integridade,
-concorrência e rollback. Production permanece fora de escopo.
+`README.md` e em `docs/database-migrations.md`. A suíte deve ser executada em
+PostgreSQL 18 isolado, cobrindo integridade, concorrência e rollback. Production
+permanece fora de escopo.

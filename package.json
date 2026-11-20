@@ -10,6 +10,16 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
     "test:integration:db": "node scripts/db-integration-test.mjs",
+    "local:setup": "tsx scripts/local-admin.ts setup",
+    "local:start": "tsx scripts/local-admin.ts start",
+    "local:stop": "tsx scripts/local-admin.ts stop",
+    "local:status": "tsx scripts/local-admin.ts status",
+    "local:reset": "tsx scripts/local-admin.ts reset",
+    "local:admin:create": "tsx scripts/provision-local-admin.ts",
+    "perf:benchmark": "node scripts/performance-benchmark.mjs",
+    "perf:browser": "node scripts/performance-browser.mjs",
+    "perf:bundle-report": "node scripts/performance-build-report.mjs",
+    "perf:database": "tsx scripts/performance-database.ts",
     "db:check": "node --env-file=.env.local scripts/db-check.mjs",
     "db:migrations:check": "node --env-file=.env.local scripts/db-migrations-check.mjs",
     "db:migrations:plan": "node scripts/db-migration-plan.mjs",
@@ -18,11 +28,14 @@
     "db:migrate:development": "tsx --env-file=.env.local scripts/db-migrate-development.ts"
   },
   "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.7.25",
+    "better-auth": "^1.7.25",
     "drizzle-orm": "0.45.4",
     "next": "16.4.6",
     "postgres": "4.1.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "resend": "^6.38.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",

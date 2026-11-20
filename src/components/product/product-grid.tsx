@@ -1,8 +1,8 @@
 import { ProductCard } from "@/components/product/product-card";
-import type { Product } from "@/types/catalog";
+import type { PublicProductSummary } from "@/types/public-catalog";
 
 type ProductGridProps = {
-  products: Product[];
+  products: PublicProductSummary[];
   eagerFirstImage?: boolean;
 };
 

@@ -39,6 +39,11 @@ export function SiteFooter() {
                 </Link>
               </li>
               <li>
+                <Link className="hover:text-cream" href="/categorias">
+                  Categorias
+                </Link>
+              </li>
+              <li>
                 <Link className="hover:text-cream" href="/sobre">
                   Nossa história
                 </Link>

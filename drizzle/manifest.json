@@ -5,6 +5,16 @@
       "id": "0000_collab_catalog",
       "file": "0000_collab_catalog.sql",
       "sha256": "1ce1576bf47f998a8444487d9e4ea1541f1b8f247636b3f5676b901373b09527"
+    },
+    {
+      "id": "0001_collab_auth",
+      "file": "0001_collab_auth.sql",
+      "sha256": "6cc3438c030adc53ade955941cecab649f28d9f819765cf9e986ae86973dcdba"
+    },
+    {
+      "id": "0002_collab_financial_pricing",
+      "file": "0002_collab_financial_pricing.sql",
+      "sha256": "09a312fb31f814b342849b3b9187f584482a8cb43b81d536c28376d2408922af"
     }
   ]
 }

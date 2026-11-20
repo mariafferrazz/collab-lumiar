@@ -2,3 +2,10 @@ title = "COLLAB secret detection"
 
 [extend]
 useDefault = true
+
+[allowlist]
+description = "Artefatos locais gerados e dependências fora do Git"
+paths = [
+  '''(^|/)\.next(?:-performance-[a-z0-9-]+)?(?:/|$)''',
+  '''(^|/)node_modules(?:/|$)''',
+]

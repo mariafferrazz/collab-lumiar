@@ -1,9 +1,12 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
 import { createServer } from "node:net";
-import path, { delimiter } from "node:path";
+import path from "node:path";
 
+import {
+  resolveDockerExecutable,
+  withDockerBinaryPath,
+} from "./lib/docker-executable.mjs";
 import {
   parsePublishedPostgresEndpoint,
   waitForPostgresSql,
@@ -13,47 +16,7 @@ import {
 const composeFile = path.resolve(process.cwd(), "compose.postgres-test.yml");
 const projectName = `collab-pg-test-${randomBytes(6).toString("hex")}`;
 
-function resolveDockerExecutable() {
-  const lookupCommand = process.platform === "win32" ? "where.exe" : "which";
-  const lookup = spawnSync(lookupCommand, ["docker"], {
-    encoding: "utf8",
-    stdio: "pipe",
-  });
-  const discovered = lookup.stdout?.split(/\r?\n/u).find(Boolean);
-
-  if (lookup.status === 0 && discovered) {
-    return discovered.trim();
-  }
-
-  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
-    const perUserDocker = path.join(
-      process.env.LOCALAPPDATA,
-      "Programs",
-      "DockerDesktop",
-      "resources",
-      "bin",
-      "docker.exe",
-    );
-
-    if (existsSync(perUserDocker)) {
-      return perUserDocker;
-    }
-  }
-
-  return "docker";
-}
-
 const dockerExecutable = resolveDockerExecutable();
-const dockerBinaryDirectory = path.dirname(dockerExecutable);
-
-function withDockerBinaryPath(environment) {
-  const existingPath = environment.PATH ?? environment.Path ?? "";
-
-  return {
-    ...environment,
-    PATH: `${dockerBinaryDirectory}${delimiter}${existingPath}`,
-  };
-}
 
 function dockerCompose(arguments_, environment, stdio = "inherit") {
   return spawnSync(
@@ -61,7 +24,7 @@ function dockerCompose(arguments_, environment, stdio = "inherit") {
     ["compose", "-f", composeFile, "-p", projectName, ...arguments_],
     {
       cwd: process.cwd(),
-      env: withDockerBinaryPath(environment),
+      env: withDockerBinaryPath(environment, dockerExecutable),
       stdio,
       encoding: stdio === "pipe" ? "utf8" : undefined,
     },
@@ -71,12 +34,12 @@ function dockerCompose(arguments_, environment, stdio = "inherit") {
 function assertDockerAvailable() {
   const docker = spawnSync(dockerExecutable, ["--version"], {
     encoding: "utf8",
-    env: withDockerBinaryPath(process.env),
+    env: withDockerBinaryPath(process.env, dockerExecutable),
     stdio: "pipe",
   });
   const compose = spawnSync(dockerExecutable, ["compose", "version"], {
     encoding: "utf8",
-    env: withDockerBinaryPath(process.env),
+    env: withDockerBinaryPath(process.env, dockerExecutable),
     stdio: "pipe",
   });
 

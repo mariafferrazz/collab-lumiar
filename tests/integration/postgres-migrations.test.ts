@@ -5,8 +5,42 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
 
+import * as schema from "@/db/schema";
+import {
+  addProductImageMetadata,
+  createArtist,
+  createCategory,
+  createProduct,
+  createVariation,
+  deleteCategory,
+  getProductDetail,
+  setArtistActive,
+  setProductPublicationStatus,
+  updateCategory,
+  updateVariation,
+  updateVariationStock,
+  upsertShippingProfile,
+} from "@/lib/admin/catalog-repository";
+import { AdminOperationError } from "@/lib/admin/types";
+import { MemoryAuthEmailTransport } from "@/lib/auth/email";
+import { createCollabAuth } from "@/lib/auth/server-factory";
+import {
+  getPersistedActiveArtistBySegment,
+  getPersistedProductPreviewById,
+  getPersistedPublishedProductBySlug,
+  listPersistedPublishedProducts,
+  listPersistedVisibleCategories,
+  searchPersistedPublishedProducts,
+} from "@/lib/catalog/public-catalog-repository";
+import {
+  createFinancialChargeRule,
+  createFinancialPolicy,
+  saveProductFinancialPricing,
+  validateProductPricingScenario,
+} from "@/lib/financial/repository";
 import {
   MigrationRunnerError,
   runMigrations,
@@ -115,6 +149,56 @@ function runnerOptions(migrationsDirectory?: string) {
   };
 }
 
+const authBaseURL = "http://127.0.0.1:3000";
+const authTestHeaders = {
+  origin: authBaseURL,
+  "x-forwarded-for": "192.0.2.1",
+} as const;
+
+async function authRequest(
+  auth: ReturnType<typeof createCollabAuth>,
+  path: string,
+  options: {
+    method?: "GET" | "POST";
+    body?: Record<string, unknown>;
+    cookie?: string;
+    ipAddress?: string;
+  } = {},
+) {
+  const headers = new Headers({
+    origin: authBaseURL,
+    "x-forwarded-for": options.ipAddress ?? "192.0.2.1",
+  });
+
+  if (options.body) {
+    headers.set("content-type", "application/json");
+  }
+  if (options.cookie) {
+    headers.set("cookie", options.cookie);
+  }
+
+  return auth.handler(
+    new Request(`${authBaseURL}/api/auth${path}`, {
+      method: options.method ?? "POST",
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    }),
+  );
+}
+
+function readSessionCookie(response: Response): string {
+  const getSetCookie = response.headers.getSetCookie?.bind(response.headers);
+  const values = getSetCookie
+    ? getSetCookie()
+    : [response.headers.get("set-cookie") ?? ""];
+  const match = values
+    .join(";")
+    .match(/(?:^|[;,]\s*)(collab\.session_token=[^;,\s]+)/u);
+
+  assert.ok(match?.[1], "A sessão autenticada deve definir um cookie.");
+  return match[1];
+}
+
 // biome-ignore format: Manter os cenários PostgreSQL agrupados facilita a auditoria da suíte destrutiva.
 test(
   "migration e runner funcionam em PostgreSQL isolado",
@@ -146,10 +230,18 @@ test(
         const firstRun = await runMigrations(runnerOptions());
         const secondRun = await runMigrations(runnerOptions());
 
-        assert.deepEqual(firstRun.applied, ["0000_collab_catalog"]);
+        assert.deepEqual(firstRun.applied, [
+          "0000_collab_catalog",
+          "0001_collab_auth",
+          "0002_collab_financial_pricing",
+        ]);
         assert.deepEqual(firstRun.skipped, []);
         assert.deepEqual(secondRun.applied, []);
-        assert.deepEqual(secondRun.skipped, ["0000_collab_catalog"]);
+        assert.deepEqual(secondRun.skipped, [
+          "0000_collab_catalog",
+          "0001_collab_auth",
+          "0002_collab_financial_pricing",
+        ]);
         assert.equal(firstRun.ledgerTable, "collab_schema_migrations");
         t.diagnostic(`PostgreSQL isolado: ${firstRun.serverVersion}`);
 
@@ -162,15 +254,24 @@ test(
         assert.deepEqual(
           tables.map((row) => row.tablename),
           [
+            "account",
             "artists",
             "categories",
             "collab_schema_migrations",
             "customer_addresses",
+            "financial_audit_events",
+            "financial_charge_rules",
+            "financial_pricing_policies",
             "product_categories",
+            "product_financial_costs",
             "product_images",
+            "product_pricing_scenarios",
             "product_variations",
             "products",
+            "session",
             "shipping_profiles",
+            "user",
+            "verification",
           ],
         );
 
@@ -184,10 +285,16 @@ test(
         assert.deepEqual(
           functions.map((row) => row.proname),
           [
+            "collab_assert_product_financially_publishable",
             "collab_assert_product_publishable",
             "collab_prevent_category_cycle",
+            "collab_protect_approved_financial_configuration",
+            "collab_protect_financial_history",
+            "collab_protect_validated_cost",
             "collab_set_updated_at",
+            "collab_validate_pricing_scenario",
             "collab_validate_product_dependencies",
+            "collab_validate_product_financial_dependencies",
           ],
         );
 
@@ -200,7 +307,7 @@ test(
             AND NOT pg_trigger.tgisinternal
           ORDER BY pg_trigger.tgname
         `;
-        assert.equal(triggers.length, 12);
+        assert.equal(triggers.length, 26);
 
         const indexes = await sql<{ indexname: string }[]>`
           SELECT indexname
@@ -222,9 +329,9 @@ test(
         const constraintTotals = new Map(
           constraints.map((row) => [row.type, row.total]),
         );
-        assert.ok((constraintTotals.get("p") ?? 0) >= 9);
-        assert.ok((constraintTotals.get("f") ?? 0) >= 8);
-        assert.ok((constraintTotals.get("c") ?? 0) >= 20);
+        assert.ok((constraintTotals.get("p") ?? 0) >= 18);
+        assert.ok((constraintTotals.get("f") ?? 0) >= 21);
+        assert.ok((constraintTotals.get("c") ?? 0) >= 39);
 
         const columnTypes = await sql<
           { table_name: string; column_name: string; data_type: string }[]
@@ -426,6 +533,11 @@ test(
         );
 
         await sql.begin(async (transaction) => {
+          const financialActorId = randomUUID();
+          const policyId = randomUUID();
+          const paymentRuleId = randomUUID();
+          const taxRuleId = randomUUID();
+          const costId = randomUUID();
           await transaction`
             INSERT INTO products (
               id, name, slug, description, artist_id, material,
@@ -440,9 +552,9 @@ test(
               ${artistId},
               'Cerâmica',
               'Modelagem manual',
-              12000,
-              'published',
-              now()
+              14001,
+              'draft',
+              NULL
             )
           `;
           await transaction`
@@ -472,6 +584,61 @@ test(
               0,
               true
             )
+          `;
+          await transaction`
+            INSERT INTO "user" (id, name, email, email_verified, role)
+            VALUES (${financialActorId}, 'Admin Financeiro Isolado', ${`finance-${financialActorId}@example.com`}, true, 'ADMIN')
+          `;
+          await transaction`
+            INSERT INTO financial_pricing_policies (
+              id, code, version, status, effective_from, source,
+              approved_by_user_id, approved_at
+            ) VALUES (
+              ${policyId}, ${`POLICY_${financialActorId.replaceAll("-", "")}`}, 1,
+              'approved', now() - interval '1 day', 'Teste isolado',
+              ${financialActorId}, now()
+            )
+          `;
+          await transaction`
+            INSERT INTO financial_charge_rules (
+              id, kind, name, payment_method, percentage_basis_points,
+              fixed_amount_in_cents, incidence_base, application_scope,
+              status, effective_from, source, approved_by_user_id, approved_at
+            ) VALUES
+              (${paymentRuleId}, 'payment_fee', 'Taxa isolada', 'pix', 0, 1,
+               'final_merchandise', 'per_item', 'approved', now() - interval '1 day',
+               'Teste isolado', ${financialActorId}, now()),
+              (${taxRuleId}, 'tax', 'Tributo zero validado', NULL, 0, 0,
+               'commercial_base', 'per_item', 'approved', now() - interval '1 day',
+               'Teste isolado', ${financialActorId}, now())
+          `;
+          await transaction`
+            INSERT INTO product_financial_costs (
+              id, product_id, policy_id, artist_cost_in_cents,
+              commercial_addition_in_cents, owner_share_in_cents,
+              organizer_share_in_cents, rounding_residual_in_cents,
+              commercial_base_in_cents, calculation_version
+            ) VALUES (
+              ${costId}, ${publishedProductId}, ${policyId}, 10000,
+              4000, 2000, 2000, 0, 14000, 'collab-pricing-v1'
+            )
+          `;
+          await transaction`
+            INSERT INTO product_pricing_scenarios (
+              cost_id, payment_method, payment_fee_rule_id, tax_rule_id,
+              expected_payment_fee_in_cents, expected_tax_in_cents,
+              calculation_residual_in_cents, final_merchandise_price_in_cents,
+              status, is_default, calculation_version,
+              validated_by_user_id, validated_at
+            ) VALUES (
+              ${costId}, 'pix', ${paymentRuleId}, ${taxRuleId}, 1, 0, 0, 14001,
+              'validated', true, 'collab-pricing-v1', ${financialActorId}, now()
+            )
+          `;
+          await transaction`
+            UPDATE products
+            SET publication_status = 'published', published_at = now()
+            WHERE id = ${publishedProductId}
           `;
         });
 
@@ -815,6 +982,991 @@ test(
           (afterUpdate[0]?.updated_at.getTime() ?? 0) >
             (beforeUpdate[0]?.updated_at.getTime() ?? 0),
         );
+      });
+
+      await t.test(
+        "executa cadastro, verificação, sessão e recuperação no Better Auth",
+        async () => {
+          await resetIsolatedDatabase(sql);
+          await runMigrations(runnerOptions());
+
+          const database = drizzle({ client: sql, schema });
+          const emailTransport = new MemoryAuthEmailTransport();
+          const disabledAuth = createCollabAuth({
+            database,
+            baseURL: authBaseURL,
+            secret: "collab-isolated-disabled-test-secret-32-chars",
+            emailTransport,
+          });
+          const disabledEmail = `bloqueado-${randomUUID()}@example.com`;
+          const disabledRegistration = await authRequest(
+            disabledAuth,
+            "/sign-up/email",
+            {
+              body: {
+                name: "Cadastro Bloqueado",
+                email: disabledEmail,
+                password: "cadastro-publico-desabilitado-2026",
+              },
+            },
+          );
+          assert.notEqual(disabledRegistration.status, 200);
+          const disabledUsers = await sql<{ total: number }[]>`
+            SELECT count(*)::integer AS total FROM "user" WHERE email = ${disabledEmail}
+          `;
+          assert.equal(disabledUsers[0]?.total, 0);
+
+          const auth = createCollabAuth({
+            database,
+            baseURL: authBaseURL,
+            secret: "collab-isolated-test-secret-with-32-characters",
+            emailTransport,
+            publicSignupEnabled: true,
+          });
+          const email = `cliente-${randomUUID()}@example.com`;
+          const password = "senha-segura-inicial-2026"; // gitleaks:allow -- fixture local, sem valor real.
+          const newPassword = "senha-segura-atualizada-2026"; // gitleaks:allow -- fixture local, sem valor real.
+          const incorrectPassword = "senha-incorreta-2026"; // gitleaks:allow -- fixture local, sem valor real.
+
+          const invalidRegistration = await authRequest(
+            auth,
+            "/sign-up/email",
+            {
+              body: {
+                name: "C",
+                email: "invalido",
+                password: "curta",
+              },
+            },
+          );
+          assert.notEqual(invalidRegistration.status, 200);
+
+          const attemptedRoleEscalation = await authRequest(
+            auth,
+            "/sign-up/email",
+            {
+              body: {
+                name: "Cliente Isolado",
+                email,
+                password,
+                role: "ADMIN",
+              },
+            },
+          );
+          assert.equal(attemptedRoleEscalation.status, 400);
+
+          const registration = await authRequest(auth, "/sign-up/email", {
+            body: {
+              name: "Cliente Isolado",
+              email,
+              password,
+            },
+          });
+          assert.equal(registration.status, 200);
+          assert.equal(emailTransport.messages.length, 1);
+          assert.equal(
+            emailTransport.messages[0]?.purpose,
+            "email-verification",
+          );
+
+          const users = await sql<
+            { id: string; email_verified: boolean; role: string }[]
+          >`
+            SELECT id, email_verified, role
+            FROM "user"
+            WHERE email = ${email}
+          `;
+          const createdUser = users[0];
+          assert.ok(createdUser);
+          assert.match(
+            createdUser.id,
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+          );
+          assert.equal(createdUser.email_verified, false);
+          assert.equal(createdUser.role, "CUSTOMER");
+
+          const credentials = await sql<
+            { password: string | null; provider_id: string }[]
+          >`
+            SELECT password, provider_id
+            FROM account
+            WHERE user_id = ${createdUser.id}
+          `;
+          assert.equal(credentials[0]?.provider_id, "credential");
+          assert.ok(credentials[0]?.password);
+          assert.notEqual(credentials[0]?.password, password);
+
+          const unverifiedLogin = await authRequest(auth, "/sign-in/email", {
+            body: { email, password },
+          });
+          assert.notEqual(unverifiedLogin.status, 200);
+
+          const verificationURL = emailTransport.messages[0]?.actionUrl;
+          assert.ok(verificationURL);
+          const verification = await auth.handler(
+            new Request(verificationURL, {
+              method: "GET",
+              headers: authTestHeaders,
+            }),
+          );
+          assert.ok(verification.status < 400);
+          const verifiedUsers = await sql<{ email_verified: boolean }[]>`
+            SELECT email_verified FROM "user" WHERE id = ${createdUser.id}
+          `;
+          assert.equal(verifiedUsers[0]?.email_verified, true);
+
+          const invalidLogin = await authRequest(auth, "/sign-in/email", {
+            body: { email, password: incorrectPassword },
+          });
+          assert.notEqual(invalidLogin.status, 200);
+          assert.doesNotMatch(await invalidLogin.text(), new RegExp(email, "u"));
+
+          const login = await authRequest(auth, "/sign-in/email", {
+            body: { email, password, rememberMe: true },
+          });
+          assert.equal(login.status, 200);
+          const firstCookie = readSessionCookie(login);
+          const activeSession = await authRequest(auth, "/get-session", {
+            method: "GET",
+            cookie: firstCookie,
+          });
+          const activeSessionData = (await activeSession.json()) as {
+            user?: { id?: string; role?: string };
+          } | null;
+          assert.equal(activeSessionData?.user?.id, createdUser.id);
+          assert.equal(activeSessionData?.user?.role, "CUSTOMER");
+
+          const forbiddenAdmin = await authRequest(
+            auth,
+            "/admin/list-users",
+            {
+              method: "GET",
+              cookie: firstCookie,
+            },
+          );
+          assert.equal(forbiddenAdmin.status, 403);
+
+          emailTransport.clear();
+          const unknownRecovery = await authRequest(
+            auth,
+            "/request-password-reset",
+            {
+              body: {
+                email: `inexistente-${randomUUID()}@example.com`,
+                redirectTo: "/redefinir-senha",
+              },
+            },
+          );
+          assert.equal(unknownRecovery.status, 200);
+          const unknownRecoveryBody = await unknownRecovery.text();
+          assert.equal(emailTransport.messages.length, 0);
+
+          const recovery = await authRequest(
+            auth,
+            "/request-password-reset",
+            {
+              body: { email, redirectTo: "/redefinir-senha" },
+            },
+          );
+          assert.equal(recovery.status, 200);
+          assert.equal(await recovery.text(), unknownRecoveryBody);
+          const resetActionURL = emailTransport.messages.find(
+            (message) => message.purpose === "password-reset",
+          )?.actionUrl;
+          assert.ok(resetActionURL);
+          const resetRedirect = await auth.handler(
+            new Request(resetActionURL, {
+              method: "GET",
+              headers: authTestHeaders,
+            }),
+          );
+          assert.ok(resetRedirect.status >= 300 && resetRedirect.status < 400);
+          const resetLocation = resetRedirect.headers.get("location");
+          assert.ok(resetLocation);
+          const resetToken = new URL(resetLocation, authBaseURL).searchParams.get(
+            "token",
+          );
+          assert.ok(resetToken);
+          await sql`
+            UPDATE verification
+            SET expires_at = now() - interval '1 minute'
+            WHERE identifier = ${`reset-password:${resetToken}`}
+          `;
+          const expiredReset = await authRequest(auth, "/reset-password", {
+            body: { newPassword, token: resetToken },
+          });
+          assert.notEqual(expiredReset.status, 200);
+
+          emailTransport.clear();
+          const renewedRecovery = await authRequest(
+            auth,
+            "/request-password-reset",
+            {
+              body: { email, redirectTo: "/redefinir-senha" },
+            },
+          );
+          assert.equal(renewedRecovery.status, 200);
+          const renewedActionURL = emailTransport.messages.find(
+            (message) => message.purpose === "password-reset",
+          )?.actionUrl;
+          assert.ok(renewedActionURL);
+          const renewedRedirect = await auth.handler(
+            new Request(renewedActionURL, {
+              method: "GET",
+              headers: authTestHeaders,
+            }),
+          );
+          const renewedLocation = renewedRedirect.headers.get("location");
+          assert.ok(renewedLocation);
+          const renewedResetToken = new URL(
+            renewedLocation,
+            authBaseURL,
+          ).searchParams.get("token");
+          assert.ok(renewedResetToken);
+          const reset = await authRequest(auth, "/reset-password", {
+            body: { newPassword, token: renewedResetToken },
+          });
+          assert.equal(reset.status, 200);
+          const reusedReset = await authRequest(auth, "/reset-password", {
+            body: { newPassword, token: renewedResetToken },
+          });
+          assert.notEqual(reusedReset.status, 200);
+
+          const revokedSession = await authRequest(auth, "/get-session", {
+            method: "GET",
+            cookie: firstCookie,
+          });
+          assert.equal(await revokedSession.json(), null);
+
+          const loginAfterReset = await authRequest(auth, "/sign-in/email", {
+            body: { email, password: newPassword },
+          });
+          assert.equal(loginAfterReset.status, 200);
+          const expiringCookie = readSessionCookie(loginAfterReset);
+          await sql`
+            UPDATE session
+            SET expires_at = now() - interval '1 minute'
+            WHERE user_id = ${createdUser.id}
+          `;
+          const expiredSession = await authRequest(auth, "/get-session", {
+            method: "GET",
+            cookie: expiringCookie,
+          });
+          assert.equal(await expiredSession.json(), null);
+
+          const finalLogin = await authRequest(auth, "/sign-in/email", {
+            body: { email, password: newPassword },
+          });
+          const logoutCookie = readSessionCookie(finalLogin);
+          const logout = await authRequest(auth, "/sign-out", {
+            cookie: logoutCookie,
+          });
+          assert.equal(logout.status, 200);
+          const loggedOutSession = await authRequest(auth, "/get-session", {
+            method: "GET",
+            cookie: logoutCookie,
+          });
+          assert.equal(await loggedOutSession.json(), null);
+
+          const addressId = randomUUID();
+          await sql`
+            INSERT INTO customer_addresses (
+              id, user_id, label, recipient_name, postal_code, street,
+              number, neighborhood, city, state_code
+            ) VALUES (
+              ${addressId}, ${createdUser.id}, 'Casa', 'Cliente Isolado',
+              '28616000', 'Rua de Teste', '10', 'Centro', 'Lumiar', 'RJ'
+            )
+          `;
+          await sql`DELETE FROM "user" WHERE id = ${createdUser.id}`;
+          const orphanAddresses = await sql<{ total: number }[]>`
+            SELECT count(*)::integer AS total
+            FROM customer_addresses
+            WHERE id = ${addressId}
+          `;
+          assert.equal(orphanAddresses[0]?.total, 0);
+        },
+      );
+
+      await t.test(
+        "trata verificação expirada, reenvio e reutilização sem privilégio",
+        async () => {
+          await resetIsolatedDatabase(sql);
+          await runMigrations(runnerOptions());
+
+          const database = drizzle({ client: sql, schema });
+          const emailTransport = new MemoryAuthEmailTransport();
+          const auth = createCollabAuth({
+            database,
+            baseURL: authBaseURL,
+            secret: "collab-short-lived-token-test-secret-32-chars",
+            emailTransport,
+            publicSignupEnabled: true,
+            tokenExpiresInSeconds: 3,
+          });
+          const email = `token-${randomUUID()}@example.com`;
+          const registration = await authRequest(auth, "/sign-up/email", {
+            body: {
+              name: "Cliente Token",
+              email,
+              password: "token-temporario-teste-2026",
+            },
+          });
+          assert.equal(registration.status, 200);
+          const expiredVerificationURL = emailTransport.messages[0]?.actionUrl;
+          assert.ok(expiredVerificationURL);
+
+          await new Promise((resolve) => setTimeout(resolve, 3_100));
+          const expiredVerification = await auth.handler(
+            new Request(expiredVerificationURL, {
+              method: "GET",
+              headers: authTestHeaders,
+            }),
+          );
+          assert.ok(
+            expiredVerification.status >= 300 &&
+              expiredVerification.status < 400,
+          );
+          assert.match(
+            expiredVerification.headers.get("location") ?? "",
+            /error=TOKEN_EXPIRED/u,
+          );
+          const unverified = await sql<{ email_verified: boolean }[]>`
+            SELECT email_verified FROM "user" WHERE email = ${email}
+          `;
+          assert.equal(unverified[0]?.email_verified, false);
+
+          emailTransport.clear();
+          const resend = await authRequest(
+            auth,
+            "/send-verification-email",
+            {
+              body: { email, callbackURL: "/verificar-email" },
+            },
+          );
+          assert.equal(resend.status, 200);
+          assert.equal(emailTransport.messages.length, 1);
+          const freshVerificationURL = emailTransport.messages[0]?.actionUrl;
+          assert.ok(freshVerificationURL);
+          const freshVerification = await auth.handler(
+            new Request(freshVerificationURL, {
+              method: "GET",
+              headers: authTestHeaders,
+            }),
+          );
+          assert.ok(
+            freshVerification.status >= 300 && freshVerification.status < 400,
+          );
+
+          const reuse = await auth.handler(
+            new Request(freshVerificationURL, {
+              method: "GET",
+              headers: authTestHeaders,
+            }),
+          );
+          assert.ok(reuse.status >= 300 && reuse.status < 400);
+          const protectedUser = await sql<
+            { email_verified: boolean; role: string }[]
+          >`
+            SELECT email_verified, role FROM "user" WHERE email = ${email}
+          `;
+          assert.deepEqual(protectedUser[0], {
+            email_verified: true,
+            role: "CUSTOMER",
+          });
+          const sessions = await sql<{ total: number }[]>`
+            SELECT count(*)::integer AS total FROM session
+          `;
+          assert.equal(sessions[0]?.total, 0);
+        },
+      );
+
+      await t.test(
+        "executa CRUD administrativo com integridade e autorização em banco isolado",
+        async () => {
+          await resetIsolatedDatabase(sql);
+          await runMigrations(runnerOptions());
+
+          const database = drizzle({ client: sql, schema });
+          const artist = await createArtist(database, {
+            artisticName: "Ateliê de Integração",
+            biography: "Artista criada exclusivamente no banco descartável.",
+            photoPath: null,
+            instagramHandle: "atelie.integracao",
+            isActive: true,
+          });
+          assert.ok(artist);
+          const parent = await createCategory(database, {
+            name: "Casa",
+            slug: "casa-integracao",
+            description: null,
+            parentId: null,
+            displayOrder: 0,
+          });
+          const child = await createCategory(database, {
+            name: "Cerâmica",
+            slug: "ceramica-integracao",
+            description: null,
+            parentId: parent?.id ?? null,
+            displayOrder: 1,
+          });
+          assert.ok(parent && child);
+
+          const product = await createProduct(database, {
+            name: "Vaso de Integração",
+            slug: "vaso-integracao",
+            description: "Vaso autoral usado somente no teste descartável.",
+            artistId: artist.id,
+            categoryIds: [child.id],
+            material: "Cerâmica",
+            productionTechnique: "Modelagem manual",
+            priceInCents: 24_900,
+            publicationStatus: "draft",
+          });
+          assert.ok(product);
+          const draftProduct = await createProduct(database, {
+            name: "Rascunho de Integração",
+            slug: "rascunho-integracao",
+            description: null,
+            artistId: artist.id,
+            categoryIds: [child.id],
+            material: null,
+            productionTechnique: null,
+            priceInCents: 0,
+            publicationStatus: "draft",
+          });
+          assert.ok(draftProduct);
+          const draftPreview = await getPersistedProductPreviewById(
+            database,
+            draftProduct.id,
+          );
+          assert.equal(draftPreview?.publicationStatus, "draft");
+          assert.equal(draftPreview?.priceInCents, null);
+          assert.ok(draftPreview?.publicationBlockers.length);
+          assert.equal(
+            (
+              await listPersistedPublishedProducts(database)
+            ).some((item) => item.id === draftProduct.id),
+            false,
+          );
+          await assert.rejects(
+            createProduct(database, {
+              name: "Slug duplicado",
+              slug: "vaso-integracao",
+              description: null,
+              artistId: artist.id,
+              categoryIds: [child.id],
+              material: null,
+              productionTechnique: null,
+              priceInCents: 1_000,
+              publicationStatus: "draft",
+            }),
+            (error) =>
+              error instanceof AdminOperationError && error.code === "CONFLICT",
+          );
+
+          const variation = await createVariation(database, {
+            productId: product.id,
+            sku: "VASO-INTEGRACAO-01",
+            color: "Barro",
+            size: "Único",
+            availableQuantity: 3,
+            specificPriceInCents: null,
+            isActive: true,
+            isDefault: true,
+          });
+          assert.ok(variation);
+          await addProductImageMetadata(database, {
+            productId: product.id,
+            filePath: `catalog/${product.id}/vaso.webp`,
+            altText: "Vaso de integração sobre fundo neutro",
+            displayOrder: 0,
+            isPrimary: true,
+          });
+          await upsertShippingProfile(database, {
+            productId: product.id,
+            variationId: null,
+            itemWeightGrams: 500,
+            itemHeightCm: 20,
+            itemWidthCm: 12,
+            itemLengthCm: 12,
+            packageWeightGrams: 650,
+            packageHeightCm: 24,
+            packageWidthCm: 16,
+            packageLengthCm: 16,
+            isFragile: true,
+            shipsSeparately: true,
+            unitsPerPackage: 1,
+          });
+          await assert.rejects(
+            setProductPublicationStatus(database, product.id, "published"),
+            (error) =>
+              error instanceof AdminOperationError &&
+              error.code === "INVALID_INPUT",
+          );
+          const financialActorId = randomUUID();
+          await sql`
+            INSERT INTO "user" (id, name, email, email_verified, role)
+            VALUES (${financialActorId}, 'Admin Financeiro Teste', ${`finance-admin-${financialActorId}@example.com`}, true, 'ADMIN')
+          `;
+          const policy = await createFinancialPolicy(
+            database,
+            {
+              code: "COLLAB_TEST_POLICY",
+              version: 1,
+              effectiveFrom: new Date(Date.now() - 86_400_000),
+              effectiveUntil: null,
+              source: "Política exclusiva do PostgreSQL descartável",
+              approve: true,
+            },
+            financialActorId,
+          );
+          const paymentRule = await createFinancialChargeRule(
+            database,
+            {
+              kind: "payment_fee",
+              name: "Taxa descartável",
+              paymentMethod: "pix",
+              percentageBasisPoints: 500,
+              fixedAmountInCents: 0,
+              incidenceBase: "final_merchandise",
+              applicationScope: "per_item",
+              effectiveFrom: new Date(Date.now() - 86_400_000),
+              effectiveUntil: null,
+              source: "Condição exclusiva do teste isolado",
+              approve: true,
+            },
+            financialActorId,
+          );
+          const taxRule = await createFinancialChargeRule(
+            database,
+            {
+              kind: "tax",
+              name: "Tributo zero descartável",
+              paymentMethod: null,
+              percentageBasisPoints: 0,
+              fixedAmountInCents: 0,
+              incidenceBase: "commercial_base",
+              applicationScope: "per_item",
+              effectiveFrom: new Date(Date.now() - 86_400_000),
+              effectiveUntil: null,
+              source: "Hipótese zero exclusiva do teste isolado",
+              approve: true,
+            },
+            financialActorId,
+          );
+          const expiredPaymentRule = await createFinancialChargeRule(
+            database,
+            {
+              kind: "payment_fee",
+              name: "Taxa descartável vencida",
+              paymentMethod: "pix",
+              percentageBasisPoints: 400,
+              fixedAmountInCents: 0,
+              incidenceBase: "final_merchandise",
+              applicationScope: "per_item",
+              effectiveFrom: new Date(Date.now() - 172_800_000),
+              effectiveUntil: new Date(Date.now() - 86_400_000),
+              source: "Regra vencida exclusiva do teste isolado",
+              approve: true,
+            },
+            financialActorId,
+          );
+          await expectPostgresCode(
+            sql`
+              INSERT INTO product_financial_costs (
+                variation_id, policy_id, artist_cost_in_cents,
+                commercial_addition_in_cents, owner_share_in_cents,
+                organizer_share_in_cents, rounding_residual_in_cents,
+                commercial_base_in_cents, calculation_version
+              ) VALUES (
+                ${variation.id}, ${policy.id}, 10000,
+                5000, 2500, 2500, 0, 15000, 'invalid-split-probe'
+              )
+            `,
+            "23514",
+          );
+          await assert.rejects(
+            saveProductFinancialPricing(
+              database,
+              {
+                productId: product.id,
+                variationId: null,
+                artistCostInCents: 10_000,
+                policyId: policy.id,
+                paymentMethod: "pix",
+                paymentFeeRuleId: expiredPaymentRule.id,
+                taxRuleId: taxRule.id,
+                isDefault: true,
+              },
+              financialActorId,
+            ),
+            (error) =>
+              error instanceof AdminOperationError &&
+              error.code === "INVALID_INPUT",
+          );
+          const financial = await saveProductFinancialPricing(
+            database,
+            {
+              productId: product.id,
+              variationId: null,
+              artistCostInCents: 10_000,
+              policyId: policy.id,
+              paymentMethod: "pix",
+              paymentFeeRuleId: paymentRule.id,
+              taxRuleId: taxRule.id,
+              isDefault: true,
+            },
+            financialActorId,
+          );
+          assert.ok(financial.scenario);
+          await validateProductPricingScenario(
+            database,
+            financial.scenario.id,
+            financialActorId,
+          );
+          const auditRows = await sql<{ id: string }[]>`
+            SELECT id
+            FROM financial_audit_events
+            WHERE actor_user_id = ${financialActorId}
+            ORDER BY created_at
+          `;
+          assert.ok(auditRows.length >= 6);
+          const auditEventId = auditRows[0]?.id;
+          assert.ok(auditEventId);
+          await expectPostgresCode(
+            sql`
+              UPDATE financial_audit_events
+              SET action = action || '.tamper'
+              WHERE id = ${auditEventId}
+            `,
+            "23514",
+          );
+          await expectPostgresCode(
+            sql`
+              UPDATE product_financial_costs
+              SET artist_cost_in_cents = artist_cost_in_cents + 1
+              WHERE id = ${financial.cost.id}
+            `,
+            "23514",
+          );
+          await expectPostgresCode(
+            sql`
+              DELETE FROM financial_audit_events
+              WHERE entity_id = ${financial.cost.id}
+            `,
+            "23514",
+          );
+          await sql`
+            UPDATE product_variations
+            SET specific_price_in_cents = 25000
+            WHERE id = ${variation.id}
+          `;
+          await assert.rejects(
+            setProductPublicationStatus(database, product.id, "published"),
+            (error) =>
+              error instanceof AdminOperationError &&
+              error.code === "INVALID_INPUT",
+          );
+          await sql`
+            UPDATE product_variations
+            SET specific_price_in_cents = NULL
+            WHERE id = ${variation.id}
+          `;
+          await setProductPublicationStatus(database, product.id, "published");
+          const published = await getProductDetail(database, product.id);
+          assert.equal(published?.product.publicationStatus, "published");
+          assert.equal(published?.images.length, 1);
+          assert.ok(published?.shippingProfile);
+
+          const secondProduct = await createProduct(database, {
+            name: "Azulejo de Integração",
+            slug: "azulejo-integracao",
+            description: "Azulejo autoral usado somente no teste descartável.",
+            artistId: artist.id,
+            categoryIds: [child.id],
+            material: "Cerâmica",
+            productionTechnique: "Pintura manual",
+            priceInCents: 0,
+            publicationStatus: "draft",
+          });
+          assert.ok(secondProduct);
+          await createVariation(database, {
+            productId: secondProduct.id,
+            sku: "AZULEJO-INTEGRACAO-01",
+            color: "Azul",
+            size: "Único",
+            availableQuantity: 0,
+            specificPriceInCents: null,
+            isActive: true,
+            isDefault: true,
+          });
+          await addProductImageMetadata(database, {
+            productId: secondProduct.id,
+            filePath: `catalog/${secondProduct.id}/azulejo.webp`,
+            altText: "Azulejo de integração sobre fundo neutro",
+            displayOrder: 0,
+            isPrimary: true,
+          });
+          const secondFinancial = await saveProductFinancialPricing(
+            database,
+            {
+              productId: secondProduct.id,
+              variationId: null,
+              artistCostInCents: 20_000,
+              policyId: policy.id,
+              paymentMethod: "pix",
+              paymentFeeRuleId: paymentRule.id,
+              taxRuleId: taxRule.id,
+              isDefault: true,
+            },
+            financialActorId,
+          );
+          assert.ok(secondFinancial.scenario);
+          await validateProductPricingScenario(
+            database,
+            secondFinancial.scenario.id,
+            financialActorId,
+          );
+          await setProductPublicationStatus(
+            database,
+            secondProduct.id,
+            "published",
+          );
+
+          const publicItems = await listPersistedPublishedProducts(database);
+          assert.deepEqual(
+            new Set(publicItems.map((item) => item.id)),
+            new Set([product.id, secondProduct.id]),
+          );
+          assert.equal("artistCostInCents" in publicItems[0], false);
+          assert.equal("ownerShareInCents" in publicItems[0], false);
+          assert.equal("organizerShareInCents" in publicItems[0], false);
+          assert.equal("expectedTaxInCents" in publicItems[0], false);
+
+          const searchBase = {
+            query: "",
+            category: null,
+            artist: null,
+            availability: "all" as const,
+            sort: "newest" as const,
+            page: 1,
+            pageSize: 12,
+          };
+          const searched = await searchPersistedPublishedProducts(database, {
+            ...searchBase,
+            query: "Vaso",
+          });
+          assert.deepEqual(
+            searched.rows.map((item) => item.id),
+            [product.id],
+          );
+          const parentCategoryProducts =
+            await searchPersistedPublishedProducts(database, {
+              ...searchBase,
+              category: parent.slug,
+            });
+          assert.equal(parentCategoryProducts.total, 2);
+          const artistProducts = await searchPersistedPublishedProducts(
+            database,
+            { ...searchBase, artist: artist.id },
+          );
+          assert.equal(artistProducts.total, 2);
+          const inStock = await searchPersistedPublishedProducts(database, {
+            ...searchBase,
+            availability: "in-stock",
+          });
+          assert.deepEqual(inStock.rows.map((item) => item.id), [product.id]);
+          const outOfStock = await searchPersistedPublishedProducts(database, {
+            ...searchBase,
+            availability: "out-of-stock",
+          });
+          assert.deepEqual(outOfStock.rows.map((item) => item.id), [secondProduct.id]);
+          const byPrice = await searchPersistedPublishedProducts(database, {
+            ...searchBase,
+            sort: "price-asc",
+          });
+          assert.deepEqual(
+            byPrice.rows.map((item) => item.id),
+            [product.id, secondProduct.id],
+          );
+          const firstPage = await searchPersistedPublishedProducts(database, {
+            ...searchBase,
+            sort: "name-asc",
+            pageSize: 1,
+          });
+          assert.equal(firstPage.total, 2);
+          assert.equal(firstPage.totalPages, 2);
+          assert.deepEqual(firstPage.rows.map((item) => item.id), [secondProduct.id]);
+
+          const publicDetail = await getPersistedPublishedProductBySlug(
+            database,
+            product.slug,
+          );
+          assert.equal(publicDetail?.priceInCents, published?.product.priceInCents);
+          assert.equal(publicDetail?.availableQuantity, 3);
+          assert.equal(publicDetail?.variations.length, 1);
+          assert.ok(publicDetail?.images.every((image) => image.src === null));
+          assert.equal("artistCostInCents" in (publicDetail ?? {}), false);
+          assert.equal(
+            await getPersistedPublishedProductBySlug(database, "inexistente"),
+            null,
+          );
+
+          const visibleCategories = await listPersistedVisibleCategories(database);
+          assert.equal(
+            visibleCategories.find((item) => item.id === parent.id)?.productCount,
+            2,
+          );
+          assert.equal(
+            visibleCategories.find((item) => item.id === child.id)?.parentId,
+            parent.id,
+          );
+          const publicArtist = await getPersistedActiveArtistBySegment(
+            database,
+            artist.id,
+          );
+          assert.equal(publicArtist?.productCount, 2);
+
+          await setProductPublicationStatus(
+            database,
+            secondProduct.id,
+            "archived",
+          );
+          assert.deepEqual(
+            (await listPersistedPublishedProducts(database)).map((item) => item.id),
+            [product.id],
+          );
+
+          const editedVariation = await updateVariation(
+            database,
+            variation.id,
+            {
+              productId: product.id,
+              sku: variation.sku,
+              color: "Terracota",
+              size: variation.size,
+              availableQuantity: 999,
+              specificPriceInCents: null,
+              isActive: true,
+              isDefault: true,
+            },
+          );
+          assert.equal(editedVariation?.color, "Terracota");
+          assert.equal(editedVariation?.availableQuantity, 3);
+
+          const updatedStock = await updateVariationStock(database, {
+            variationId: variation.id,
+            availableQuantity: 2,
+            expectedAvailableQuantity: editedVariation?.availableQuantity ?? 3,
+            expectedUpdatedAt: editedVariation?.updatedAt ?? variation.updatedAt,
+          });
+          assert.equal(updatedStock.availableQuantity, 2);
+          await assert.rejects(
+            updateVariationStock(database, {
+              variationId: variation.id,
+              availableQuantity: 1,
+              expectedAvailableQuantity: editedVariation?.availableQuantity ?? 3,
+              expectedUpdatedAt: editedVariation?.updatedAt ?? variation.updatedAt,
+            }),
+            (error) =>
+              error instanceof AdminOperationError && error.code === "CONFLICT",
+          );
+
+          await assert.rejects(
+            updateCategory(database, parent.id, {
+              name: parent.name,
+              slug: parent.slug,
+              description: parent.description,
+              parentId: child.id,
+              displayOrder: parent.displayOrder,
+            }),
+            (error) => error instanceof AdminOperationError,
+          );
+          await assert.rejects(
+            deleteCategory(database, child.id),
+            (error) =>
+              error instanceof AdminOperationError &&
+              error.code === "RELATION_PROTECTED",
+          );
+          await setArtistActive(database, artist.id, false);
+          assert.equal(
+            await getPersistedActiveArtistBySegment(database, artist.id),
+            null,
+          );
+          assert.ok(await getProductDetail(database, product.id));
+          await setProductPublicationStatus(database, product.id, "archived");
+          assert.equal(
+            (await listPersistedPublishedProducts(database)).length,
+            0,
+          );
+
+          const emailTransport = new MemoryAuthEmailTransport();
+          const auth = createCollabAuth({
+            database,
+            baseURL: authBaseURL,
+            secret: "collab-admin-isolated-test-secret-32-chars",
+            emailTransport,
+            publicSignupEnabled: false,
+          });
+          const adminEmail = `admin-isolado-${randomUUID()}@example.com`;
+          const adminPassword = "admin-isolado-teste-2026"; // gitleaks:allow -- fixture local, sem valor real.
+          const adminIpAddress = "192.0.2.77";
+          const provisioned = await auth.api.createUser({
+            body: {
+              name: "Admin Isolado",
+              email: adminEmail,
+              password: adminPassword,
+              role: "ADMIN",
+              data: {
+                emailVerified: true,
+                banned: false,
+                banReason: null,
+                banExpires: null,
+              },
+            },
+          });
+          assert.equal(provisioned.user.role, "ADMIN");
+          assert.equal(provisioned.user.emailVerified, true);
+          const login = await authRequest(auth, "/sign-in/email", {
+            body: { email: adminEmail, password: adminPassword },
+            ipAddress: adminIpAddress,
+          });
+          assert.equal(login.status, 200);
+          const adminResponse = await authRequest(auth, "/admin/list-users", {
+            method: "GET",
+            cookie: readSessionCookie(login),
+            ipAddress: adminIpAddress,
+          });
+          assert.equal(adminResponse.status, 200);
+        },
+      );
+
+      await t.test("aplica rate limit ao login", async () => {
+        await resetIsolatedDatabase(sql);
+        await runMigrations(runnerOptions());
+
+        const auth = createCollabAuth({
+          database: drizzle({ client: sql, schema }),
+          baseURL: authBaseURL,
+          secret: "collab-rate-limit-test-secret-with-32-chars",
+          emailTransport: new MemoryAuthEmailTransport(),
+          publicSignupEnabled: true,
+        });
+        const statuses: number[] = [];
+        for (let attempt = 0; attempt < 9; attempt += 1) {
+          const response = await authRequest(auth, "/sign-in/email", {
+            body: {
+              email: "rate-limit@example.com",
+              password: "tentativa-invalida-2026",
+            },
+            ipAddress: "192.0.2.9",
+          });
+          statuses.push(response.status);
+        }
+
+        assert.equal(statuses.at(-1), 429);
+        assert.equal(statuses.slice(0, 8).includes(429), false);
       });
 
       await t.test("rejeita migration alterada depois da aplicação", async () => {

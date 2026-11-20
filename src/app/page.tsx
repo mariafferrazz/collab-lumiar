@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { ArtistCard } from "@/components/artist/artist-card";
+import { CatalogModeNotice } from "@/components/catalog/catalog-mode-notice";
 import {
   InstagramPreview,
   InstagramPreviewLoading,
@@ -10,14 +11,9 @@ import {
 import { ProductGrid } from "@/components/product/product-grid";
 import { ArrowRightIcon } from "@/components/ui/icons";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { artists, products } from "@/data/catalog";
+import { publicCatalog } from "@/lib/server/catalog";
 
 export default function Home() {
-  const featuredProducts = products
-    .filter((product) => product.featured)
-    .slice(0, 4);
-  const featuredArtists = artists.filter((artist) => artist.featured);
-
   return (
     <main id="conteudo">
       <section className="page-shell pt-4 sm:pt-6" aria-labelledby="hero-title">
@@ -50,7 +46,8 @@ export default function Home() {
               </Link>
             </div>
             <p className="mt-8 text-xs text-ink/50">
-              Imagens, nomes e produtos demonstrativos da Etapa 1.1.
+              A fotografia institucional permanece demonstrativa até a revisão
+              dos direitos de uso pela proprietária.
             </p>
           </div>
 
@@ -64,7 +61,7 @@ export default function Home() {
               className="object-cover object-[64%_center]"
             />
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-brand/70 to-transparent p-6 pt-24 text-right text-xs font-bold uppercase tracking-[0.14em] text-cream">
-              Curadoria demonstrativa · Etapa 1.1
+              Curadoria visual demonstrativa
             </div>
           </div>
         </div>
@@ -94,6 +91,45 @@ export default function Home() {
         </div>
       </section>
 
+      <Suspense fallback={<HomeCatalogFallback />}>
+        <HomeCatalogContent />
+      </Suspense>
+
+      <Suspense fallback={<InstagramPreviewLoading />}>
+        <InstagramPreview />
+      </Suspense>
+    </main>
+  );
+}
+
+function HomeCatalogFallback() {
+  return (
+    <section className="bg-surface/70 py-20">
+      <div className="page-shell text-sm text-ink/60" role="status">
+        Preparando a curadoria do catálogo…
+      </div>
+    </section>
+  );
+}
+
+async function HomeCatalogContent() {
+  const [products, artists, categories] = await Promise.all([
+    publicCatalog.searchProducts({
+      query: "",
+      category: null,
+      artist: null,
+      availability: "all",
+      sort: "newest",
+      page: 1,
+      pageSize: 4,
+    }),
+    publicCatalog.searchArtists({ query: "", page: 1, pageSize: 4 }),
+    publicCatalog.categories(),
+  ]);
+  const source = publicCatalog.source();
+
+  return (
+    <>
       <section
         className="bg-surface/70 py-16 sm:py-24"
         aria-labelledby="produtos-title"
@@ -101,17 +137,28 @@ export default function Home() {
         <div className="page-shell">
           <div id="produtos-title">
             <SectionHeading
-              eyebrow="Seleção da serra"
-              title="Produtos em destaque"
+              eyebrow={
+                source === "demo"
+                  ? "Seleção demonstrativa"
+                  : "Novidades publicadas"
+              }
+              title="Produtos da curadoria"
               description="Pequenas séries, materiais honestos e processos que deixam a mão de quem fez aparecer."
               href="/produtos"
               linkLabel="Ver todo o catálogo"
             />
           </div>
-          <ProductGrid products={featuredProducts} />
-          <p className="mt-8 text-xs leading-5 text-ink/55">
-            Carrinho e favoritos são apenas elementos visuais nesta etapa.
-          </p>
+          <div className="mb-8">
+            <CatalogModeNotice source={source} />
+          </div>
+          {products.rows.length ? (
+            <ProductGrid products={products.rows} />
+          ) : (
+            <p className="rounded-2xl border border-dashed border-brand/20 bg-paper p-7 text-sm text-ink/60">
+              Ainda não há produtos publicados. Rascunhos permanecem privados no
+              painel administrativo.
+            </p>
+          )}
         </div>
       </section>
 
@@ -122,22 +169,58 @@ export default function Home() {
         <div id="artistas-title">
           <SectionHeading
             eyebrow="Quem faz"
-            title="Artistas em destaque"
-            description="Quatro perfis fictícios apresentam como a futura área de artistas poderá valorizar processos, biografias e produtos."
+            title="Artistas da COLLAB"
+            description="Perfis ativos apresentam processos, biografias e produtos publicados."
             href="/artistas"
             linkLabel="Conhecer todos"
           />
         </div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {featuredArtists.map((artist) => (
-            <ArtistCard key={artist.slug} artist={artist} />
-          ))}
-        </div>
+        {artists.rows.length ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {artists.rows.map((artist) => (
+              <ArtistCard key={artist.id} artist={artist} />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-brand/20 p-7 text-sm text-ink/60">
+            Nenhum perfil ativo está disponível neste catálogo.
+          </p>
+        )}
       </section>
 
-      <Suspense fallback={<InstagramPreviewLoading />}>
-        <InstagramPreview />
-      </Suspense>
-    </main>
+      {categories.length ? (
+        <section
+          className="bg-sand/45 py-16 sm:py-20"
+          aria-labelledby="home-categories"
+        >
+          <div className="page-shell">
+            <p className="eyebrow">Navegue por temas</p>
+            <h2
+              id="home-categories"
+              className="mt-3 font-display text-4xl text-ink sm:text-5xl"
+            >
+              Categorias publicadas
+            </h2>
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              {categories.slice(0, 6).map((category) => (
+                <Link
+                  className="rounded-[1.4rem] border border-brand/12 bg-surface p-5 hover:border-brand/30"
+                  href={`/categorias/${category.slug}`}
+                  key={category.id}
+                >
+                  <h3 className="font-display text-3xl text-ink">
+                    {category.name}
+                  </h3>
+                  <p className="mt-2 text-sm text-ink/60">
+                    {category.productCount}{" "}
+                    {category.productCount === 1 ? "produto" : "produtos"}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+    </>
   );
 }

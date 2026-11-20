@@ -2,7 +2,11 @@ import "server-only";
 
 export const PRIVATE_ENVIRONMENT_VARIABLES = [
   "DATABASE_URL",
-  "SUPABASE_SECRET_KEY",
+  "BETTER_AUTH_SECRET",
+  "BETTER_AUTH_URL",
+  "AUTH_EMAIL_PROVIDER",
+  "AUTH_EMAIL_FROM",
+  "RESEND_API_KEY",
   "MERCADO_PAGO_ACCESS_TOKEN",
   "MERCADO_PAGO_WEBHOOK_SECRET",
   "MELHOR_ENVIO_CLIENT_ID",
@@ -26,4 +30,11 @@ export function getRequiredServerEnvironmentVariable(
   }
 
   return value;
+}
+
+export function getOptionalServerEnvironmentVariable(
+  name: string,
+): string | undefined {
+  const value = process.env[name]?.trim();
+  return value || undefined;
 }

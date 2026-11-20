@@ -10,11 +10,15 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
+import { user } from "@/db/schema/auth";
+
 export const customerAddresses = pgTable(
   "customer_addresses",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     label: varchar("label", { length: 60 }).notNull(),
     recipientName: varchar("recipient_name", { length: 160 }).notNull(),
     postalCode: varchar("postal_code", { length: 8 }).notNull(),

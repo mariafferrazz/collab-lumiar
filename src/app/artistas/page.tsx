@@ -1,15 +1,39 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Suspense } from "react";
 
 import { ArtistCard } from "@/components/artist/artist-card";
-import { artists } from "@/data/catalog";
+import { CatalogModeNotice } from "@/components/catalog/catalog-mode-notice";
+import { SearchIcon } from "@/components/ui/icons";
+import { readPublicArtistSearchInput } from "@/lib/catalog/public-query";
+import { publicCatalog } from "@/lib/server/catalog";
 
 export const metadata: Metadata = {
   title: "Artistas",
   description:
-    "Conheça perfis demonstrativos de artistas e produtores da região de Lumiar e Nova Friburgo.",
+    "Conheça artistas e produtores ativos da curadoria COLLAB LUMIAR.",
 };
 
-export default function ArtistsPage() {
+async function ArtistsContent({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const parameters = await searchParams;
+  const input = readPublicArtistSearchInput({
+    q: parameters.q,
+    pagina: parameters.pagina,
+  });
+  const result = await publicCatalog.searchArtists(input);
+  const source = publicCatalog.source();
+
+  const pageHref = (page: number) => {
+    const query = new URLSearchParams();
+    if (input.query) query.set("q", input.query);
+    if (page > 1) query.set("pagina", String(page));
+    return query.size ? `/artistas?${query}` : "/artistas";
+  };
+
   return (
     <main id="conteudo" className="page-shell py-12 sm:py-20">
       <section className="grid gap-8 border-b border-brand/20 pb-12 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
@@ -20,28 +44,94 @@ export default function ArtistsPage() {
           </h1>
         </div>
         <p className="max-w-lg text-lg leading-8 text-ink/65 lg:justify-self-end">
-          Perfis demonstrativos para apresentar o futuro espaço de biografias,
-          processos, redes sociais e produtos de cada artista.
+          Biografias, processos e produtos dos artistas ativos da curadoria.
+          Contatos privados nunca são publicados.
         </p>
       </section>
 
-      <section className="py-12 sm:py-16" aria-labelledby="lista-artistas">
+      <section className="py-10" aria-labelledby="lista-artistas">
+        <div className="mb-7 grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
+          <CatalogModeNotice source={source} />
+          <form action="/artistas" className="relative min-w-72">
+            <label>
+              <span className="sr-only">Pesquisar artistas</span>
+              <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-ink/45" />
+              <input
+                className="h-12 w-full rounded-full border border-ink/15 bg-paper pl-11 pr-24 text-sm"
+                defaultValue={input.query}
+                name="q"
+                placeholder="Nome do artista"
+                type="search"
+              />
+            </label>
+            <button
+              className="absolute right-1 top-1 h-10 rounded-full bg-brand px-4 text-xs font-bold text-cream"
+              type="submit"
+            >
+              Buscar
+            </button>
+          </form>
+        </div>
         <h2 id="lista-artistas" className="sr-only">
           Lista de artistas
         </h2>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {artists.map((artist) => (
-            <ArtistCard key={artist.slug} artist={artist} />
-          ))}
-        </div>
+        {result.rows.length ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {result.rows.map((artist) => (
+              <ArtistCard key={artist.id} artist={artist} />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[1.6rem] border border-dashed border-brand/20 bg-surface p-8 text-center">
+            <h3 className="font-display text-3xl text-ink">
+              Nenhum artista encontrado
+            </h3>
+            <p className="mt-2 text-sm text-ink/60">
+              Ajuste a busca ou aguarde a ativação de novos perfis.
+            </p>
+          </div>
+        )}
+        {result.totalPages > 1 ? (
+          <nav
+            className="mt-10 flex items-center justify-center gap-3"
+            aria-label="Paginação de artistas"
+          >
+            {result.page > 1 ? (
+              <Link
+                className="button-secondary"
+                href={pageHref(result.page - 1)}
+              >
+                Anterior
+              </Link>
+            ) : null}
+            <span className="text-sm text-ink/60">
+              Página {result.page} de {result.totalPages}
+            </span>
+            {result.page < result.totalPages ? (
+              <Link
+                className="button-secondary"
+                href={pageHref(result.page + 1)}
+              >
+                Próxima
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </section>
-
-      <aside className="rounded-[1.6rem] border border-brand/12 bg-surface p-6 text-sm leading-7 text-ink/65 sm:p-8">
-        <strong className="text-ink">Transparência da demonstração:</strong> os
-        nomes, textos e retratos acima são fictícios e servem apenas para
-        validar o design desta etapa. Os perfis reais serão cadastrados com
-        consentimento em uma etapa futura.
-      </aside>
     </main>
+  );
+}
+
+export default function ArtistsPage({ searchParams }: PageProps<"/artistas">) {
+  return (
+    <Suspense
+      fallback={
+        <main id="conteudo" className="page-shell py-20 text-sm text-ink/60">
+          Carregando artistas…
+        </main>
+      }
+    >
+      <ArtistsContent searchParams={searchParams} />
+    </Suspense>
   );
 }

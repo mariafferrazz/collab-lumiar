@@ -1,35 +1,31 @@
-import Image from "next/image";
 import Link from "next/link";
 
+import { CatalogImage } from "@/components/catalog/catalog-image";
 import { CartIcon, HeartIcon } from "@/components/ui/icons";
-import { getArtistBySlug, getCategoryBySlug } from "@/data/catalog";
 import { formatPrice } from "@/lib/format";
-import type { Product } from "@/types/catalog";
+import type { PublicProductSummary } from "@/types/public-catalog";
 
 type ProductCardProps = {
-  product: Product;
+  product: PublicProductSummary;
   eager?: boolean;
 };
 
 export function ProductCard({ product, eager = false }: ProductCardProps) {
-  const artist = getArtistBySlug(product.artistSlug);
-  const category = getCategoryBySlug(product.categorySlug);
+  const category = product.categories[0];
 
   return (
     <article className="product-card group rounded-[1.5rem] border border-brand/10 bg-surface p-2 pb-5">
       <div className="relative aspect-[4/5] overflow-hidden rounded-[1.05rem] bg-sand">
         <Link className="absolute inset-0" href={`/produtos/${product.slug}`}>
-          <Image
-            src={product.image.src}
-            alt={product.image.alt}
-            fill
-            loading={eager ? "eager" : "lazy"}
+          <CatalogImage
+            image={product.image}
+            eager={eager}
             sizes="(max-width: 640px) 92vw, (max-width: 1024px) 46vw, 25vw"
             className="object-cover transition duration-500 group-hover:scale-[1.025]"
           />
         </Link>
         <span className="absolute left-3 top-3 rounded-full bg-surface/90 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.12em] text-brand backdrop-blur">
-          {category?.name}
+          {category?.name ?? "COLLAB"}
         </span>
         <button
           type="button"
@@ -43,14 +39,12 @@ export function ProductCard({ product, eager = false }: ProductCardProps) {
       </div>
 
       <div className="px-2 pt-4">
-        {artist ? (
-          <Link
-            className="text-xs font-bold uppercase tracking-[0.13em] text-brand hover:underline"
-            href={`/artistas/${artist.slug}`}
-          >
-            {artist.name}
-          </Link>
-        ) : null}
+        <Link
+          className="text-xs font-bold uppercase tracking-[0.13em] text-brand hover:underline"
+          href={`/artistas/${product.artist.pathSegment}`}
+        >
+          {product.artist.name}
+        </Link>
         <div className="mt-1 flex items-start justify-between gap-4">
           <div>
             <h3 className="font-display text-2xl leading-tight text-ink">
@@ -77,6 +71,13 @@ export function ProductCard({ product, eager = false }: ProductCardProps) {
         </div>
         <p className="mt-3 text-base font-bold text-brand">
           {formatPrice(product.priceInCents)}
+        </p>
+        <p className="mt-1 text-xs text-ink/50">
+          {product.source === "demo"
+            ? "Disponibilidade demonstrativa"
+            : (product.availableQuantity ?? 0) > 0
+              ? `${product.availableQuantity} em estoque local`
+              : "Esgotado"}
         </p>
       </div>
     </article>

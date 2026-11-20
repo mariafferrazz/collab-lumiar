@@ -12,6 +12,7 @@ import {
 const navigation = [
   { href: "/", label: "Início" },
   { href: "/produtos", label: "Produtos" },
+  { href: "/categorias", label: "Categorias" },
   { href: "/artistas", label: "Artistas" },
   { href: "/sobre", label: "Sobre a Collab" },
 ];
