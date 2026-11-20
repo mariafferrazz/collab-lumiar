@@ -39,5 +39,17 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Prepare isolated build environment
+        shell: bash
+        run: |
+          printf 'BETTER_AUTH_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          printf 'DATABASE_URL=postgresql://collab_ci:%s@127.0.0.1:5432/collab_ci\n' "$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+
       - name: Build
+        env:
+          AUTH_EMAIL_PROVIDER: disabled
+          AUTH_PUBLIC_SIGNUP_ENABLED: "false"
+          BETTER_AUTH_URL: https://collab-ci.example.invalid
+          CATALOG_DATA_SOURCE: demo
+          DATABASE_ENVIRONMENT: ci
         run: npm run build
